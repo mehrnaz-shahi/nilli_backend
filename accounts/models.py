@@ -1,5 +1,3 @@
-import uuid
-
 from django.utils import timezone
 from django.contrib.auth.models import AbstractUser, PermissionsMixin
 from .managers import CustomUserManager
