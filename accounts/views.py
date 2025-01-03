@@ -32,75 +32,61 @@ class SendOTPAPI(CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data.get('email')
-            # Try to get existing user
-            user, created = TemporaryUser.objects.update_or_create(
-                email=email,
-                defaults={
-                    'otp_code': generate_otp(),
-                    'otp_code_expiration': expiration_timestamp()
-                }
-            )
+        serializer.is_valid(raise_exception=True)
 
-            print(f"OTP Code for {email}: {user.otp_code}")
+        email = serializer.validated_data['email']
+        user, _ = TemporaryUser.objects.update_or_create(
+            email=email,
+            defaults={
+                'otp_code': generate_otp(),
+                'otp_code_expiration': expiration_timestamp()
+            }
+        )
 
-            # Send OTP to the user via email
-            send_mail(
-                'Your OTP code',
-                f'Your OTP code is: {user.otp_code}',
-                settings.DEFAULT_FROM_EMAIL,
-                [email],
-                fail_silently=False,
-            )
-            return Response({"detail": "OTP sent successfully."}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        print(f"OTP Code for {email}: {user.otp_code}")
+
+        # Send OTP to the user
+        send_mail(
+            'Your OTP Code',
+            f'Your OTP code is: {user.otp_code}',
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False,
+        )
+
+        return Response({"detail": "OTP sent successfully."}, status=status.HTTP_201_CREATED)
 
 
 class VerifyOTPAPI(CreateAPIView):
+    serializer_class = OTPSerializer
+
     def create(self, request, *args, **kwargs):
-        serializer = OTPSerializer(data=request.data)
-        if serializer.is_valid():
-            otp_code = serializer.validated_data['otp_code']
-            email = request.data.get('email')
-            user = TemporaryUser.objects.filter(email=email, otp_code=otp_code).first()
-            if user:
-                if user.is_otp_valid():
-                    # OTP code is valid
-                    # Check if user already exists or create new user
-                    auth_user = self.authenticate_or_create_user(user)
-                    if auth_user:
-                        # Generate tokens
-                        tokens = self.get_tokens(auth_user)
-                        login(request, auth_user)
-                        user.delete()  # delete temp user after login successfully
-                        return Response(tokens, status=status.HTTP_200_OK)
-                return Response({"detail": "Invalid or expired OTP code"}, status=status.HTTP_400_BAD_REQUEST)
-            return Response({"detail": "You should give otp code first"}, status=status.HTTP_404_NOT_FOUND)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-    def authenticate_or_create_user(self, temp_user):
-        # Check if user with phone number exists
-        user = User.objects.filter(email=temp_user.email).first()
-        if user:
-            return user
-        # Create new user based on temporary user info
-        new_user = User.objects.create_user(
-            email=temp_user.email,
-            password=temp_user.otp_code
+        email = serializer.validated_data['email']
+        otp_code = serializer.validated_data['otp_code']
+
+        user = TemporaryUser.objects.filter(email=email, otp_code=otp_code).first()
+        if not user or not user.is_otp_valid():
+            return Response({"detail": "Invalid or expired OTP code."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Authenticate or create user
+        auth_user = User.objects.filter(email=email).first()
+        if not auth_user:
+            auth_user = User.objects.create_user(email=email, password=otp_code)
+
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(auth_user)
+        user.delete()  # Clean up temporary user
+
+        return Response(
+            {
+                "access_token": str(refresh.access_token),
+                "refresh_token": str(refresh),
+            },
+            status=status.HTTP_200_OK,
         )
-        return new_user
-
-    def get_tokens(self, user):
-        refresh = RefreshToken.for_user(user)
-        return {
-            'access_token': str(refresh.access_token),
-            'refresh_token': str(refresh),
-        }
-
-    # Optional: Override the get_serializer_class method to specify serializer class
-    def get_serializer_class(self):
-        return OTPSerializer
 
 
 class UserInfoAPIView(RetrieveAPIView):
@@ -122,22 +108,11 @@ class GoogleLogin(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
 
     def get_response(self):
-        # Get the original response from the parent class
         response = super().get_response()
-
-        # Get the user from the response data
         user = self.user
 
-        # Create JWT token for the user
         refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
-
-        # Optionally save the token to the user's profile
-        user.profile.jwt_token = access_token  # Assuming you have a `profile` model or similar
-        user.profile.save()
-
-        # Add JWT token to the response data
-        response.data['access_token'] = access_token
+        response.data['access_token'] = str(refresh.access_token)
         response.data['refresh_token'] = str(refresh)
 
         return response

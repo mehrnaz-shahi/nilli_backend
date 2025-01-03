@@ -15,7 +15,7 @@ class AddToCartView(APIView):
         try:
             product = Product.objects.get(id=product_id)
         except Product.DoesNotExist:
-            return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "محصول یافت نشد."}, status=status.HTTP_404_NOT_FOUND)
 
         cart, created = Cart.objects.get_or_create(user=request.user)
 
@@ -36,18 +36,18 @@ class RemoveFromCartView(APIView):
         try:
             product = Product.objects.get(id=product_id)
         except Product.DoesNotExist:
-            return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "محصول یافت نشد"}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             cart = Cart.objects.get(user=request.user)
         except Cart.DoesNotExist:
-            return Response({"detail": "Cart not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "سبد خریدی یافت نشد."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             cart_item = CartItem.objects.get(cart=cart, product=product)
             cart_item.delete()
         except CartItem.DoesNotExist:
-            return Response({"detail": "Product not in cart."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "محصول در سبد خرید نیست."}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = CartSerializer(cart)
         return Response(serializer.data, status=status.HTTP_204_NO_CONTENT)

@@ -7,8 +7,7 @@ urlpatterns = [
     path('verifyOTP/', VerifyOTPAPI.as_view(), name='verify_otp_code'),
     path('whoami/', UserInfoAPIView.as_view(), name='whoami'),
     path('', include('allauth.urls')),
-    path('auth/google/', GoogleLogin.as_view(), name='google_login'),
-    path('dj-rest-auth/', include('dj_rest_auth.urls')),  # Login/logout endpoints
-    path('dj-rest-auth/registration/', include('dj_rest_auth.registration.urls')),  # Registration endpoints
+    path('authentication/', include('dj_rest_auth.urls')),  # Login/logout endpoints
+    path('registration/', include('dj_rest_auth.registration.urls')),  # Registration endpoints
     path('logout', LogoutView.as_view()),
 ]
